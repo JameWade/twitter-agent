@@ -159,8 +159,8 @@ class TimelineMonitor:
 推文内容："{tweet_data['content']}"
 
 要求：
-1. 只写一句话
-2. 30字以内
+1. 只写一到两句话
+2. 30-50字
 3. 自然回复即可
 
 直接返回评论："""
@@ -274,7 +274,7 @@ class TimelineMonitor:
                             print(f"✅ 推文符合评论条件，开始生成评论...")
                             
                             # 30% 概率跳过评论，模拟真人不会每条都回复
-                            if random.random() < 0.3:
+                            if random.random() < 0.1:
                                 print("🎲 随机跳过此推文（模拟真人行为）")
                                 continue
                             

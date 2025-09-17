@@ -111,7 +111,7 @@ class TwitterAgent:
             return False
         
         # 随机决定是否发推（50%概率）
-        return random.random() < 0.5
+        return random.random() < 0.3
     
     
     async def cleanup(self):
