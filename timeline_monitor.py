@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Set
 import json
 import time
+import os
+import random
 
 # 添加twikit路径
 sys.path.append('./twikit-main')
@@ -19,10 +21,54 @@ except ImportError:
     print("⚠️ 请安装 Google Generative AI: pip install google-generativeai")
     genai = None
 
+class GeminiKeyPool:
+    """简单的Gemini API密钥池，支持轮询与指数退避。"""
+    def __init__(self, keys: List[str], model_name: str, ban_seconds: int = 60):
+        self.keys = [k for k in (keys or []) if k]
+        self.model_name = model_name
+        self.index = 0
+        self.key_ban_until: Dict[str, float] = {}
+        self.ban_seconds = max(10, ban_seconds)
+
+    def _is_key_available(self, key: str) -> bool:
+        now = time.time()
+        until = self.key_ban_until.get(key, 0)
+        return now >= until
+
+    def _next_available_key(self) -> str:
+        if not self.keys:
+            return None
+        start = self.index
+        for _ in range(len(self.keys)):
+            key = self.keys[self.index]
+            self.index = (self.index + 1) % len(self.keys)
+            if self._is_key_available(key):
+                return key
+        # 如果都在ban期，返回最早解禁的那个
+        earliest_key = min(self.keys, key=lambda k: self.key_ban_until.get(k, 0))
+        return earliest_key
+
+    def backoff_current_key(self):
+        if not self.keys:
+            return
+        # 上一个使用的 key 是 index-1
+        key = self.keys[(self.index - 1) % len(self.keys)]
+        self.key_ban_until[key] = time.time() + self.ban_seconds
+
+    def get_model(self):
+        if not genai:
+            return None
+        key = self._next_available_key()
+        if not key:
+            return None
+        genai.configure(api_key=key)
+        return genai.GenerativeModel(self.model_name)
+
 class TimelineMonitor:
     def __init__(self):
         self.twitter_client = None
         self.gemini_client = None
+        self.gemini_pool = None
         self.processed_tweets = set()  # 防止重复处理
         self.commented_tweets = set()  # 已评论的推文ID
         self.last_check_time = datetime.now()
@@ -32,12 +78,28 @@ class TimelineMonitor:
     def _init_gemini(self):
         """初始化Gemini AI客户端"""
         try:
-            import os
-            api_key = os.getenv('GEMINI_API_KEY', 'AIzaSyCYHGwUsXFf7ZTF7q76r2oPyfXSR29elp4')
-            
-            if genai:
-                genai.configure(api_key=api_key)
-                self.gemini_client = genai.GenerativeModel('gemini-2.0-flash-001')
+            # 仅从 gemini_keys.txt 读取密钥池（每行一个）
+            keys: List[str] = []
+            keys_file = 'gemini_keys.txt'
+            if os.path.exists(keys_file):
+                with open(keys_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        k = line.strip()
+                        if k and not k.startswith('#'):
+                            keys.append(k)
+            # 不再支持单钥或硬编码回退；若没有可用 key 列表，则不初始化
+            if not keys:
+                print("❌ 未找到任何 Gemini API Key（请设置 GEMINI_API_KEYS 或提供 gemini_keys.txt）")
+                self.gemini_pool = None
+                self.gemini_client = None
+                return
+
+            # 构建密钥轮询池
+            self.gemini_pool = GeminiKeyPool(keys=keys, model_name='gemini-2.0-flash-001')
+            # 预置一个客户端以验证可用性（不会固定住该 key）
+            if genai and self.gemini_pool:
+                _ = self.gemini_pool.get_model()
+                self.gemini_client = _
         except Exception as e:
             print(f"❌ Gemini AI 初始化失败: {e}")
     
@@ -151,7 +213,7 @@ class TimelineMonitor:
 
     async def analyze_tweet_and_generate_comment(self, tweet_data: Dict) -> str:
         """分析推文并生成评论"""
-        if not self.gemini_client:
+        if not self.gemini_pool:
             return None
             
         prompt = f"""看到这条推文，写一句话评论：
@@ -165,22 +227,38 @@ class TimelineMonitor:
 
 直接返回评论："""
 
-        try:
-            response = self.gemini_client.generate_content(prompt)
-            comment = response.text.strip()
-            
-            # 清理格式符号
-            comment = comment.replace('"', '').replace("'", '').replace('评论：', '').strip()
-            
-            # 确保是一句话，限制长度
-            if len(comment) > 30:
-                comment = comment[:30]
-                
-            return comment
-            
-        except Exception as e:
-            print(f"❌ AI生成评论失败: {e}")
-            return None
+        # 使用密钥池进行重试与轮询
+        max_attempts = max(3, len(self.gemini_pool.keys) * 2)
+        base_delay = 1.0
+        for attempt in range(1, max_attempts + 1):
+            try:
+                model = self.gemini_pool.get_model()
+                if not model:
+                    raise RuntimeError('Gemini 模型不可用（无可用密钥）')
+                response = model.generate_content(prompt)
+                text = getattr(response, 'text', '') or ''
+                comment = text.strip()
+                # 清理格式符号
+                comment = comment.replace('"', '').replace("'", '').replace('评论：', '').strip()
+                # 确保是一句话，限制长度
+                if len(comment) > 50:
+                    comment = comment[:50]
+                return comment
+            except Exception as e:
+                msg = str(e)
+                is_rate_limited = ('429' in msg) or ('ResourceExhausted' in msg) or ('rate limit' in msg.lower())
+                if is_rate_limited:
+                    self.gemini_pool.backoff_current_key()
+                    delay = base_delay * (2 ** min(attempt - 1, 4))
+                    delay = delay + random.uniform(0, 0.5)
+                    print(f"⏳ Gemini 触发限流，等待 {delay:.1f}s 后重试（第{attempt}/{max_attempts}次）")
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    print(f"❌ AI生成评论失败: {e}")
+                    return None
+        print("❌ 多次尝试后仍失败（可能持续限流或网络问题）")
+        return None
 
     async def post_comment(self, tweet_obj, comment_text: str) -> bool:
         """发布评论"""

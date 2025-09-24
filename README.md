@@ -48,29 +48,22 @@ pip install -r requirements.txt
 
 ### 2. 创建必要文件
 
-#### 方式1：使用环境变量（推荐）
-1. 复制环境变量模板文件：
-```bash
-cp env_example.txt .env
-```
-
-2. 编辑 `.env` 文件，填入你的配置：
-```
-TWITTER_USER_AGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
-TWITTER_AUTHORIZATION=Bearer YOUR_BEARER_TOKEN
-TWITTER_COOKIE=YOUR_TWITTER_COOKIES
-TWITTER_PROXY=socks5://proxy_if_needed
-GEMINI_API_KEY=YOUR_GEMINI_API_KEY
-```
-
-#### 方式2：使用配置文件
-创建 `cookies.txt` 文件：
+#### 创建 `cookies.txt` 文件
 ```
 User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 Authorization: Bearer YOUR_BEARER_TOKEN
 Cookie: YOUR_TWITTER_COOKIES
 Proxy: socks5://proxy_if_needed
 ```
+
+#### 创建 `gemini_keys.txt`（Gemini 密钥池）
+```
+# 一行一个 Gemini API Key，支持注释
+your_key_1
+your_key_2
+your_key_3
+```
+说明：程序仅从 `gemini_keys.txt` 读取密钥；如果触发 429/限流，会对当前密钥进入短暂禁用并自动轮换到下一把钥匙，池子只有一个密钥时也会做指数退避后继续重试。
 
 ### 3. 获取Twitter账号信息
 1. 登录你的Twitter账号
@@ -82,8 +75,8 @@ Proxy: socks5://proxy_if_needed
 
 ### 4. 获取Gemini API密钥
 1. 访问 [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. 创建新的API密钥
-3. 将密钥填入环境变量或代码中
+2. 创建新的 API 密钥（可创建多把以组成池子）
+3. 将密钥写入 `gemini_keys.txt`（一行一个，支持 `#` 注释）
 
 ### 3. 运行程序
 
@@ -134,6 +127,11 @@ python run_twitter_agent.py
 - **发帖间隔**：至少3分钟，随机决定
 - **时间线检查**：每3-10分钟随机检查
 - **评论策略**：智能过滤，人性化回复
+
+### Gemini 密钥池说明
+- 仅使用 `gemini_keys.txt` 提供密钥池。
+- 触发 429/限流：当前密钥进入短暂禁用窗口并自动轮换；只有一把密钥时进行指数退避重试。
+- 建议至少准备 2-3 把密钥以提升稳定性。
 
 ## 注意事项
 
