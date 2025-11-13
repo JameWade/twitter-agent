@@ -10,9 +10,11 @@ from __future__ import annotations
 
 from config import get_active_project
 from projects.monad import MonadTwitterAgent
+from projects.zama import ZamaTwitterAgent
 
 PROJECT_REGISTRY = {
     "monad": MonadTwitterAgent,
+    "zama": ZamaTwitterAgent,
 }
 
 active_project = get_active_project().lower()
@@ -21,5 +23,5 @@ TwitterAgent = PROJECT_REGISTRY.get(active_project, MonadTwitterAgent)
 if TwitterAgent is MonadTwitterAgent and active_project not in PROJECT_REGISTRY:
     print(f"⚠️ 未找到项目 '{active_project}' ，已回退到 Monad 配置")
 
-__all__ = ["TwitterAgent", "MonadTwitterAgent"]
+__all__ = ["TwitterAgent", "MonadTwitterAgent", "ZamaTwitterAgent"]
 
