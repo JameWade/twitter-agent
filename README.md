@@ -19,19 +19,15 @@
 ## 文件结构
 
 ### 核心模块
-- **`twitter_agent.py`** - 主程序，整合所有功能
-- **`twitter_client.py`** - Twitter客户端统一管理
-- **`research_module.py`** - 数据收集模块
-- **`analysis_module.py`** - AI分析模块
-- **`publish_module.py`** - 推文发布模块
-- **`timeline_monitor.py`** - 时间线监控模块
+- **`twitter_agent.py`** - 入口模块，根据环境变量选择项目 Agent
+- **`twitter_core/`** - 可复用的 Twitter 基础能力（客户端、发布、时间线监控等）
+- **`projects/monad/`** - Monad 项目的业务逻辑与 Agent 实现
 
 ### 启动脚本
 - **`run_twitter_agent.py`** - 主启动脚本（推荐使用）
 
 ### 配置文件
-- **`cookies.txt`** - Twitter账号信息（必须配置）
-- **`monad_config.json`** - 项目配置
+- **`.env`** - 环境变量配置（参考 `config/env.example`）
 - **`requirements.txt`** - Python依赖包
 
 ### 输出文件
@@ -48,22 +44,7 @@ pip install -r requirements.txt
 
 ### 2. 创建必要文件
 
-#### 创建 `cookies.txt` 文件
-```
-User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
-Authorization: Bearer YOUR_BEARER_TOKEN
-Cookie: YOUR_TWITTER_COOKIES
-Proxy: socks5://proxy_if_needed
-```
-
-#### 创建 `gemini_keys.txt`（Gemini 密钥池）
-```
-# 一行一个 Gemini API Key，支持注释
-your_key_1
-your_key_2
-your_key_3
-```
-说明：程序仅从 `gemini_keys.txt` 读取密钥；如果触发 429/限流，会对当前密钥进入短暂禁用并自动轮换到下一把钥匙，池子只有一个密钥时也会做指数退避后继续重试。
+复制 `config/env.example` 为项目根目录 `.env`，填入真实的 Cookie、Authorization、Gemini Key 等信息。
 
 ### 3. 获取Twitter账号信息
 1. 登录你的Twitter账号
@@ -76,7 +57,7 @@ your_key_3
 ### 4. 获取Gemini API密钥
 1. 访问 [Google AI Studio](https://aistudio.google.com/app/apikey)
 2. 创建新的 API 密钥（可创建多把以组成池子）
-3. 将密钥写入 `gemini_keys.txt`（一行一个，支持 `#` 注释）
+3. 将密钥填入 `.env` 中的 `GEMINI_API_KEY` 或 `GEMINI_API_KEYS`（多个用逗号分隔）
 
 ### 3. 运行程序
 
@@ -129,13 +110,13 @@ python run_twitter_agent.py
 - **评论策略**：智能过滤，人性化回复
 
 ### Gemini 密钥池说明
-- 仅使用 `gemini_keys.txt` 提供密钥池。
-- 触发 429/限流：当前密钥进入短暂禁用窗口并自动轮换；只有一把密钥时进行指数退避重试。
+- `GEMINI_API_KEYS` 支持配置多把密钥（逗号分隔），系统会自动轮换并在限流时退避。
+- 如仅配置 `GEMINI_API_KEY`，将作为单把密钥使用。
 - 建议至少准备 2-3 把密钥以提升稳定性。
 
 ## 注意事项
 
-1. 必须正确配置 `cookies.txt` 中的Twitter账号信息
+1. 必须在 `.env` 中正确配置 Twitter 认证信息和 Gemini API Key
 2. 首次使用建议先测试单次发推
 3. 长期运行需要稳定的网络环境
 4. 遵守Twitter使用规则，避免频繁操作

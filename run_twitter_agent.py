@@ -6,7 +6,6 @@ Twitter Agent 启动脚本
 
 import asyncio
 import sys
-import os
 
 # 检查依赖
 try:
@@ -18,6 +17,7 @@ except ImportError as e:
     print("请运行: pip install -r requirements.txt")
     sys.exit(1)
 
+from config import load_environment
 from twitter_agent import TwitterAgent
 
 async def main():
@@ -26,11 +26,12 @@ async def main():
     print("📱 模拟真实用户行为：发推、回复、互动")
     
     try:
+        load_environment()
         agent = TwitterAgent()
         
         # 初始化
         if not await agent.initialize():
-            print("❌ 初始化失败，请检查cookies.txt配置")
+            print("❌ 初始化失败，请检查环境变量配置（例如 .env 文件）")
             return
         
         # 像真实Twitter用户一样运行
@@ -54,6 +55,7 @@ if __name__ == "__main__":
     print("=" * 60)
     
     try:
+        load_environment()
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\n👋 程序已退出")
