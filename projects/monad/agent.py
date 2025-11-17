@@ -32,7 +32,7 @@ class MonadTwitterAgent:
     async def initialize(self) -> bool:
         """初始化Twitter客户端"""
         print("🔗 初始化Twitter客户端...")
-        self.twitter_client = self.client_manager.load_twitter_client()
+        self.twitter_client = await self.client_manager.login_twitter_client()
 
         if not self.twitter_client:
             print("❌ Twitter客户端初始化失败")

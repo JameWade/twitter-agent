@@ -7,8 +7,10 @@ Twitter客户端统一管理模块
 
 from __future__ import annotations
 
+import json
 import os
 import sys
+import tempfile
 from typing import Dict, Optional, Tuple
 
 import httpx
@@ -54,43 +56,82 @@ class TwitterClientManager:
 
         return headers, cookies, proxy
 
-    def load_twitter_client(self) -> Optional[Client]:
-        """加载Twitter客户端"""
+    async def login_twitter_client(self) -> Optional[Client]:
+        """登录Twitter客户端（TWITTER_COOKIE和用户名密码都是必填）"""
         try:
-            proxy = os.getenv("TWITTER_PROXY", "") or None
+            # 必填参数：从环境变量读取
             cookies_str = os.getenv("TWITTER_COOKIE", "")
+            username = os.getenv("TWITTER_USERNAME", "")
+            email = os.getenv("TWITTER_EMAIL", "")
+            password = os.getenv("TWITTER_PASSWORD", "")
+            proxy = os.getenv("TWITTER_PROXY", "") or None
 
+            # 检查必填参数
             if not cookies_str:
-                print("❌ 缺少环境变量 TWITTER_COOKIE")
+                print("❌ TWITTER_COOKIE 是必填参数")
+                return None
+            if not (username or email) or not password:
+                print("❌ TWITTER_USERNAME/TWITTER_EMAIL 和 TWITTER_PASSWORD 是必填参数")
                 return None
 
-            # 构造一个与 cookies.txt 相同格式的块以复用解析逻辑
-            env_block_lines = [
-                f"Cookie: {cookies_str}",
-            ]
-            if proxy:
-                env_block_lines.append(f"Proxy: {proxy}")
-            env_block = "\n".join(env_block_lines)
-
-            headers, cookies, proxy = self.parse_account_headers(env_block)
-
+            # 初始化客户端
+            client = Client('en-US')
+            
+            # 设置代理（如果有）
             if proxy and not proxy.startswith(("http://", "https://", "socks5://")):
                 proxy = "socks5://" + proxy
-
-            client = Client()
-            timeout = httpx.Timeout(10.0, connect=5.0)
-            client.http = httpx.AsyncClient(
-                proxy=proxy,
-                headers=headers,
-                cookies=cookies,
-                timeout=timeout,
+            
+            if proxy:
+                timeout = httpx.Timeout(10.0, connect=5.0)
+                client.http = httpx.AsyncClient(proxy=proxy, timeout=timeout)
+            
+            # 解析cookie
+            env_block_lines = [f"Cookie: {cookies_str}"]
+            env_block = "\n".join(env_block_lines)
+            headers, cookies, _ = self.parse_account_headers(env_block)
+            
+            # 将cookies转换为JSON并保存到临时文件
+            cookies_json_file = None
+            if cookies:
+                # 将cookies字典转换为JSON格式
+                cookies_json = json.dumps(cookies, indent=2)
+                
+                # 保存到临时文件
+                with tempfile.NamedTemporaryFile(
+                    mode='w', suffix='.json', delete=False, encoding='utf-8', dir='.'
+                ) as tmp_file:
+                    tmp_file.write(cookies_json)
+                    cookies_json_file = tmp_file.name
+                
+                print(f"📝 Cookies已转换为JSON并保存到临时文件: {cookies_json_file}")
+            
+            # 登录（login方法会自动检查cookie是否有效，无效则用用户名密码登录）
+            print("🔐 正在登录...")
+            print(f"   用户名/邮箱: {username or email}")
+            print(f"   代理: {proxy or '无'}")
+            await client.login(
+                auth_info_1=username or email,
+                auth_info_2=email if username else None,
+                password=password,
+                cookies_file=cookies_json_file
             )
-
+            
             self.client = client
+            print("✅ Twitter 登录成功！")
             return client
         except Exception as e:  # noqa: BLE001
-            print(f"❌ Twitter客户端加载失败: {e}")
-        return None
+            import traceback
+            error_msg = str(e)
+            error_type = type(e).__name__
+            print(f"\n{'=' * 60}")
+            print(f"❌ Twitter 登录失败")
+            print(f"{'=' * 60}")
+            print(f"错误类型: {error_type}")
+            print(f"错误信息: {error_msg}")
+            print(f"\n详细错误堆栈:")
+            traceback.print_exc()
+            print(f"{'=' * 60}\n")
+            return None
 
     async def close_client(self) -> None:
         """关闭Twitter客户端"""

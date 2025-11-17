@@ -29,7 +29,7 @@ class ZamaTwitterAgent:
 
     async def initialize(self) -> bool:
         print("🔗 初始化 Twitter 客户端...")
-        self.twitter_client = self.client_manager.load_twitter_client()
+        self.twitter_client = await self.client_manager.login_twitter_client()
 
         if not self.twitter_client:
             print("❌ Twitter 客户端初始化失败")
